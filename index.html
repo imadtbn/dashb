@@ -77,6 +77,14 @@
     .import-instructions{background:#f8f9fa;padding:12px;border-radius:8px;margin-bottom:12px}
     .import-area{width:100%;min-height:150px;border:1px dashed #ccc;border-radius:8px;padding:12px;margin:12px 0;font-family:monospace}
 
+    /* تحسينات التحميل والرسائل */
+    .loading{display:none;text-align:center;padding:20px;color:var(--primary)}
+    .loading i{animation:spin 1s linear infinite;font-size:2rem}
+    @keyframes spin{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}
+    .alert{padding:12px;border-radius:8px;margin:10px 0}
+    .alert-success{background:#d4edda;color:#155724}
+    .alert-error{background:#f8d7da;color:#721c24}
+
     /* تجاوب */
     @media(max-width:980px){ .form-grid{grid-template-columns:repeat(2,1fr)} }
     @media(max-width:640px){ 
@@ -85,6 +93,7 @@
       .btn{padding:8px 10px} 
       .btn-group{flex-direction:column;align-items:stretch}
       .row-actions{flex-direction:column}
+      .modal-content{width:95%;margin:10% auto}
     }
   </style>
 </head>
@@ -107,6 +116,12 @@
   </header>
 
   <main>
+    <!-- رسائل التحميل -->
+    <div id="loading" class="loading" hidden>
+      <i class="fas fa-spinner"></i>
+      <p>جاري تحميل البيانات...</p>
+    </div>
+
     <!-- المنتجات -->
     <section id="products" class="card">
       <h2>إضافة/إدارة المنتجات</h2>
@@ -138,7 +153,9 @@
               <th>إجراءات</th>
             </tr>
           </thead>
-          <tbody id="productsBody"></tbody>
+          <tbody id="productsBody">
+            <tr><td colspan="6" style="text-align:center;padding:20px">جاري تحميل البيانات...</td></tr>
+          </tbody>
         </table>
       </div>
     </section>
@@ -161,7 +178,9 @@
           <thead>
             <tr><th>#</th><th>الفئة</th><th>الوصف</th><th>إجراءات</th></tr>
           </thead>
-          <tbody id="categoriesBody"></tbody>
+          <tbody id="categoriesBody">
+            <tr><td colspan="4" style="text-align:center;padding:20px">جاري تحميل البيانات...</td></tr>
+          </tbody>
         </table>
       </div>
     </section>
@@ -183,7 +202,9 @@
               <th>إجراءات</th>
             </tr>
           </thead>
-          <tbody id="ordersBody"></tbody>
+          <tbody id="ordersBody">
+            <tr><td colspan="8" style="text-align:center;padding:20px">جاري تحميل البيانات...</td></tr>
+          </tbody>
         </table>
       </div>
     </section>
@@ -253,35 +274,56 @@
 
     async function init(){
       try{
+        showLoading(true);
+        
         // ملاحظة: نتوقع من تطبيق الويب في Apps Script أن يدعم ?sheet=products / categories / orders
         const [products,categories,orders] = await Promise.all([
           apiGet('products'), apiGet('categories'), apiGet('orders')
         ]);
-        PRODUCTS = normalizeRows(products); // مصفوفة كائنات
-        CATEGORIES = normalizeRows(categories);
-        ORDERS = normalizeRows(orders);
+        
+        PRODUCTS = normalizeRows(products, ['id', 'name', 'category', 'price', 'stock', 'image', 'desc']);
+        CATEGORIES = normalizeRows(categories, ['id', 'name', 'desc']);
+        ORDERS = normalizeRows(orders, ['id', 'customerName', 'phone', 'items', 'total', 'status', 'date']);
 
         renderCategoriesSelect();
         renderProductsTable();
         renderCategoriesTable();
         renderOrdersTable();
         renderCharts();
+        
+        showLoading(false);
       }catch(err){
         console.error(err);
+        showLoading(false);
         alert('تعذر الجلب من Google Sheets. يرجى التأكد من صلاحيات Web App وبنية الأوراق.');
       }
     }
 
-    // تحويل مصفوفة الصفوف إلى كائنات إن كانت مصفوفات خام
-    function normalizeRows(rows){
-      // إذا عاد السيرفر بالفعل ككائنات فنعيدها كما هي
-      if(rows && rows.length && !Array.isArray(rows[0])) return rows;
+    // إظهار/إخفاء تحميل
+    function showLoading(show) {
+      document.getElementById('loading').hidden = !show;
+    }
+
+    // تحويل مصفوفة الصفوف إلى كائنات مع أعمدة محددة
+    function normalizeRows(rows, expectedColumns){
       if(!rows || !rows.length) return [];
+      
+      // إذا كانت البيانات بالفعل كائنات (ليست مصفوفة)
+      if(!Array.isArray(rows[0])) {
+        return rows;
+      }
+      
+      // إذا كانت البيانات مصفوفة من المصفوفات (صفوف مع عناوين)
       const headers = rows[0];
-      const out=[];
-      for(let i=1;i<rows.length;i++){
-        const obj={};
-        headers.forEach((h,idx)=>obj[h]=rows[i][idx]);
+      const out = [];
+      
+      for(let i = 1; i < rows.length; i++){
+        const obj = {};
+        headers.forEach((h, idx) => {
+          // استخدام أسماء الأعمدة المتوقعة إذا كانت متوفرة
+          const colName = expectedColumns[idx] || h;
+          obj[colName] = rows[i][idx];
+        });
         out.push(obj);
       }
       return out;
@@ -290,25 +332,33 @@
     // ===== المنتجات =====
     function renderCategoriesSelect(){
       const sel = document.getElementById('p_category');
-      sel.innerHTML = '<option value="">— اختر فئة —</option>' + CATEGORIES.map(c=>`<option value="${c.name||c["name"]||c["اسم الفئة"]||c["category"]}">${c.name||c["اسم الفئة"]||c["category"]}</option>`).join('');
+      sel.innerHTML = '<option value="">— اختر فئة —</option>' + 
+        CATEGORIES.map(c => `<option value="${c.name}">${c.name}</option>`).join('');
     }
 
     function renderProductsTable(){
       const body = document.getElementById('productsBody');
+      
+      if(!PRODUCTS.length) {
+        body.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:20px">لا توجد منتجات</td></tr>';
+        return;
+      }
+      
       body.innerHTML = '';
       PRODUCTS.forEach((p,idx)=>{
-        const id = p.id||p.ID||p["Id"]||p["المعرف"];
-        const name = p.name||p["الاسم"];
-        const category = p.category||p["الفئة"];
-        const price = p.price||p["السعر"];
-        const stock = p.stock||p["المخزون"]||0;
+        const id = p.id || idx;
+        const name = p.name || '';
+        const category = p.category || '';
+        const price = p.price || 0;
+        const stock = p.stock || 0;
+        
         body.insertAdjacentHTML('beforeend',`
           <tr>
             <td>${idx+1}</td>
-            <td>${name||''}</td>
-            <td>${category||''}</td>
-            <td>${price||''}</td>
-            <td>${stock||''}</td>
+            <td>${name}</td>
+            <td>${category}</td>
+            <td>${price} دج</td>
+            <td>${stock}</td>
             <td class="row-actions">
               <button class="btn" onclick="editProduct('${id}')"><i class='fa-regular fa-pen-to-square'></i> تعديل</button>
               <button class="btn btn-danger" onclick="deleteProduct('${id}')"><i class='fa-regular fa-trash-can'></i> حذف</button>
@@ -329,54 +379,79 @@
         image: document.getElementById('p_image').value.trim(),
         desc: document.getElementById('p_desc').value.trim(),
       };
-      if(!payload.name || !payload.category){ return alert('الاسم والفئة مطلوبان'); }
+      
+      if(!payload.name || !payload.category){ 
+        return alert('الاسم والفئة مطلوبان'); 
+      }
+      
       try{
         const msg = await apiPost(payload);
         alert(msg||'تمت الإضافة');
         document.getElementById('resetProductForm').click();
         init();
-      }catch(e){ alert('تعذر الإضافة'); }
+      }catch(e){ 
+        alert('تعذر الإضافة'); 
+      }
     });
+    
     document.getElementById('resetProductForm').addEventListener('click',()=>{
-      ['p_name','p_category','p_price','p_stock','p_image','p_desc'].forEach(id=>document.getElementById(id).value='');
+      ['p_name','p_category','p_price','p_stock','p_image','p_desc'].forEach(id=>{
+        document.getElementById(id).value='';
+      });
     });
 
     // تعديل/حذف منتج
     window.editProduct = async function(id){
-      const p = PRODUCTS.find(x=> (x.id||x.ID)==id);
+      const p = PRODUCTS.find(x => (x.id == id));
       if(!p){return alert('لم يتم العثور على المنتج');}
-      const newPrice = prompt('أدخل السعر الجديد', p.price||p["السعر"]||0);
+      
+      const newPrice = prompt('أدخل السعر الجديد', p.price || 0);
       if(newPrice===null) return;
-      const newStock = prompt('أدخل المخزون الجديد', p.stock||p["المخزون"]||0);
+      
+      const newStock = prompt('أدخل المخزون الجديد', p.stock || 0);
       if(newStock===null) return;
+      
       try{
         const msg = await apiPost({action:'updateProduct', id, price:+newPrice, stock:+newStock});
         alert(msg||'تم التحديث');
         init();
-      }catch(e){ alert('تعذر التحديث'); }
+      }catch(e){ 
+        alert('تعذر التحديث'); 
+      }
     }
+    
     window.deleteProduct = async function(id){
       if(!confirm('تأكيد حذف المنتج؟')) return;
+      
       try{
         const msg = await apiPost({action:'deleteProduct', id});
         alert(msg||'تم الحذف');
         init();
-      }catch(e){ alert('تعذر الحذف'); }
+      }catch(e){ 
+        alert('تعذر الحذف'); 
+      }
     }
 
     // ===== الفئات =====
     function renderCategoriesTable(){
       const body = document.getElementById('categoriesBody');
+      
+      if(!CATEGORIES.length) {
+        body.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:20px">لا توجد فئات</td></tr>';
+        return;
+      }
+      
       body.innerHTML = '';
       CATEGORIES.forEach((c,idx)=>{
-        const id = c.id||c.ID||c["Id"];
-        const name = c.name||c["اسم الفئة"]||c["category"];
-        const desc = c.desc||c["الوصف"]||'';
+        const id = c.id || idx;
+        const name = c.name || '';
+        const desc = c.desc || '';
+        
         body.insertAdjacentHTML('beforeend',`
           <tr>
             <td>${idx+1}</td>
-            <td>${name||''}</td>
-            <td>${desc||''}</td>
+            <td>${name}</td>
+            <td>${desc}</td>
             <td class="row-actions">
               <button class="btn btn-danger" onclick="deleteCategory('${id}')"><i class='fa-regular fa-trash-can'></i> حذف</button>
             </td>
@@ -388,45 +463,59 @@
     document.getElementById('addCategoryBtn').addEventListener('click', async ()=>{
       const name = document.getElementById('c_name').value.trim();
       const desc = document.getElementById('c_desc').value.trim();
+      
       if(!name) return alert('اسم الفئة مطلوب');
+      
       try{
         const msg = await apiPost({action:'addCategory', name, desc});
         alert(msg||'تمت إضافة الفئة');
         document.getElementById('c_name').value='';
         document.getElementById('c_desc').value='';
         init();
-      }catch(e){ alert('تعذر إضافة الفئة'); }
+      }catch(e){ 
+        alert('تعذر إضافة الفئة'); 
+      }
     });
 
     window.deleteCategory = async function(id){
       if(!confirm('تأكيد حذف الفئة؟ سيؤثر على المنتجات المرتبطة.')) return;
+      
       try{
         const msg = await apiPost({action:'deleteCategory', id});
         alert(msg||'تم حذف الفئة');
         init();
-      }catch(e){ alert('تعذر حذف الفئة'); }
+      }catch(e){ 
+        alert('تعذر حذف الفئة'); 
+      }
     }
 
     // ===== الطلبات =====
     function renderOrdersTable(){
       const body = document.getElementById('ordersBody');
+      
+      if(!ORDERS.length) {
+        body.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:20px">لا توجد طلبات</td></tr>';
+        return;
+      }
+      
       body.innerHTML='';
       ORDERS.forEach((o,idx)=>{
-        const id = o.id||o.ID;
-        const name = o.customerName||o["اسم العميل"]||o["العميل"];
-        const phone = (o.phone||o["الهاتف"]||'').toString();
-        const items = o.items||o["المنتجات"]||'';
-        const total = o.total||o["الإجمالي"]||o["المجموع"]||'';
-        const status = o.status||o["الحالة"]||'جديد';
-        const date = o.date||o["التاريخ"]||o["تاريخ"]||'';
+        const id = o.id || idx;
+        const name = o.customerName || '';
+        const phone = (o.phone || '').toString();
+        const items = o.items || '';
+        const total = o.total || '';
+        const status = o.status || 'جديد';
+        const date = o.date || '';
         const wa = normalizeDZ(phone);
+        
         body.insertAdjacentHTML('beforeend',`
           <tr>
             <td>${idx+1}</td>
-            <td>${name||''}</td>
+            <td>${name}</td>
             <td><a href="https://wa.me/${wa}?text=${encodeURIComponent('مرحباً، بخصوص طلبكم من مشتلة السلام: '+items+' — الإجمالي: '+total)}" target="_blank">${phone}</a></td>
             <td>${items}</td>
-            <td>${total}</td>
+            <td>${total} دج</td>
             <td><span class="badge">${status}</span></td>
             <td>${formatDate(date)}</td>
             <td class="row-actions">
@@ -445,14 +534,23 @@
       if(p.startsWith('00213')) p = '213'+p.slice(5);
       return p;
     }
-    function formatDate(d){ try{ return new Date(d).toLocaleDateString('ar-DZ'); }catch{ return d||'' } }
+    
+    function formatDate(d){ 
+      try{ 
+        return new Date(d).toLocaleDateString('ar-DZ'); 
+      }catch{ 
+        return d||''; 
+      } 
+    }
 
     async function updateOrder(id,status){
       try{
         const msg = await apiPost({action:'updateOrder', id, status});
         alert(msg||'تم تحديث الحالة');
         init();
-      }catch(e){ alert('تعذر تحديث الطلب'); }
+      }catch(e){ 
+        alert('تعذر تحديث الطلب'); 
+      }
     }
 
     // ===== الرسوم البيانية =====
@@ -465,22 +563,26 @@
       // 1) عدد الطلبات شهريًا
       const monthly = {};
       ORDERS.forEach(o=>{
-        const d = new Date(o.date||o["التاريخ"]||o["تاريخ"]||Date.now());
+        const d = new Date(o.date||Date.now());
         const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
         monthly[key] = (monthly[key]||0)+1;
       });
       const labelsM = Object.keys(monthly).sort();
       const dataM = labelsM.map(k=>monthly[k]);
-      chartOrdersMonthly = new Chart(document.getElementById('ordersMonthly'),{
-        type:'line',
-        data:{ labels:labelsM, datasets:[{ label:'الطلبات شهريًا', data:dataM }] },
-        options:{ responsive:true, plugins:{ legend:{ display:true } } }
-      });
+      
+      const ordersCtx = document.getElementById('ordersMonthly');
+      if(ordersCtx) {
+        chartOrdersMonthly = new Chart(ordersCtx,{
+          type:'line',
+          data:{ labels:labelsM, datasets:[{ label:'الطلبات شهريًا', data:dataM, borderColor:'#2e7d32', backgroundColor:'rgba(46, 125, 50, 0.1)' }] },
+          options:{ responsive:true, plugins:{ legend:{ display:true } } }
+        });
+      }
 
       // 2) أكثر المنتجات تكرارًا في الطلبات
       const counts = {};
       ORDERS.forEach(o=>{
-        const raw = (o.items||o["المنتجات"]||'');
+        const raw = (o.items||'');
         raw.split(',').map(s=>s.trim()).filter(Boolean).forEach(name=>{
           // يحذف الكميات مثل ×2
           const base = name.replace(/×\s*\d+/,'').trim();
@@ -489,11 +591,15 @@
       });
       const labelsT = Object.keys(counts);
       const dataT = labelsT.map(k=>counts[k]);
-      chartTopProducts = new Chart(document.getElementById('topProducts'),{
-        type:'bar',
-        data:{ labels:labelsT, datasets:[{ label:'تكرار البيع', data:dataT }] },
-        options:{ indexAxis: labelsT.length>6 ? 'y' : 'x', plugins:{ legend:{display:true} } }
-      });
+      
+      const productsCtx = document.getElementById('topProducts');
+      if(productsCtx) {
+        chartTopProducts = new Chart(productsCtx,{
+          type:'bar',
+          data:{ labels:labelsT, datasets:[{ label:'تكرار البيع', data:dataT, backgroundColor:'#81c784' }] },
+          options:{ indexAxis: labelsT.length>6 ? 'y' : 'x', plugins:{ legend:{display:true} } }
+        });
+      }
     }
 
     // ===== استيراد المنتجات =====
