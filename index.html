@@ -27,14 +27,15 @@
     .brand{display:flex;gap:10px;align-items:center;font-weight:800;letter-spacing:.3px}
     .brand i{background:rgba(255,255,255,.15);padding:10px;border-radius:14px}
     .actions{display:flex;gap:8px}
-    .btn{appearance:none;border:0;cursor:pointer;border-radius:12px;padding:10px 14px;background:#fff;color:#1f2937;font-weight:600;box-shadow:0 1px 2px rgba(0,0,0,.08)}
-    .btn:hover{filter:brightness(.98)}
+    .btn{appearance:none;border:0;cursor:pointer;border-radius:12px;padding:10px 14px;background:#fff;color:#1f2937;font-weight:600;box-shadow:0 1px 2px rgba(0,0,0,.08);transition:all 0.2s ease}
+    .btn:hover{filter:brightness(.98);transform:translateY(-1px)}
     .btn-primary{background:var(--card);color:var(--primary);border:2px solid #e8f5e9}
+    .btn-group{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
 
     /* تبويبات */
     .tabs{background:#ffffff;border-bottom:1px solid #eef2f7}
     .tabs-inner{max-width:1200px;margin:auto;display:flex;gap:6px;overflow:auto;padding:6px 10px}
-    .tab{white-space:nowrap;border:0;background:transparent;padding:10px 14px;border-radius:999px;color:#334155;font-weight:700}
+    .tab{white-space:nowrap;border:0;background:transparent;padding:10px 14px;border-radius:999px;color:#334155;font-weight:700;transition:all 0.2s ease}
     .tab i{margin-left:6px}
     .tab.active{background:#e8f5e9;color:var(--primary);box-shadow:inset 0 0 0 2px #cdebd3}
 
@@ -55,6 +56,7 @@
     .btn-save:hover{background:var(--primary-2)}
     .btn-outline{background:#fff;border:1px solid #e5e7eb}
     .btn-danger{background:var(--danger);color:#fff}
+    .btn-warning{background:var(--warning);color:#fff}
 
     /* جداول */
     .table-wrap{overflow:auto;border:1px solid #eef2f7;border-radius:14px}
@@ -67,9 +69,23 @@
     /* شبكات الإحصائيات */
     .stats-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:14px}
 
+    /* مودال الاستيراد */
+    .modal{display:none;position:fixed;z-index:50;left:0;top:0;width:100%;height:100%;background-color:rgba(0,0,0,0.5)}
+    .modal-content{background-color:#fefefe;margin:5% auto;padding:20px;border-radius:var(--radius);max-width:600px;box-shadow:0 4px 20px rgba(0,0,0,0.15)}
+    .close{color:#aaa;float:left;font-size:28px;font-weight:bold;cursor:pointer}
+    .close:hover{color:#000}
+    .import-instructions{background:#f8f9fa;padding:12px;border-radius:8px;margin-bottom:12px}
+    .import-area{width:100%;min-height:150px;border:1px dashed #ccc;border-radius:8px;padding:12px;margin:12px 0;font-family:monospace}
+
     /* تجاوب */
     @media(max-width:980px){ .form-grid{grid-template-columns:repeat(2,1fr)} }
-    @media(max-width:640px){ .form-grid{grid-template-columns:1fr} .brand span{display:none} .btn{padding:8px 10px} }
+    @media(max-width:640px){ 
+      .form-grid{grid-template-columns:1fr} 
+      .brand span{display:none} 
+      .btn{padding:8px 10px} 
+      .btn-group{flex-direction:column;align-items:stretch}
+      .row-actions{flex-direction:column}
+    }
   </style>
 </head>
 <body>
@@ -103,9 +119,10 @@
           <div class="field" style="grid-column:1 / -1"><label>رابط الصورة</label><input id="p_image" placeholder="https://" /></div>
           <div class="field" style="grid-column:1 / -1"><label>وصف</label><textarea id="p_desc" placeholder="وصف مختصر"></textarea></div>
         </div>
-        <div style="display:flex;gap:10px;margin-top:10px">
+        <div class="btn-group">
           <button id="addProductBtn" class="btn-save"><i class="fa-solid fa-plus"></i> إضافة المنتج</button>
           <button id="resetProductForm" class="btn btn-outline"><i class="fa-regular fa-circle-xmark"></i> تفريغ</button>
+          <button id="importProductsBtn" class="btn btn-warning"><i class="fa-solid fa-file-import"></i> استيراد المنتجات</button>
         </div>
       </div>
 
@@ -134,7 +151,7 @@
           <div class="field"><label>اسم الفئة</label><input id="c_name" placeholder="مثال: أشجار مثمرة" /></div>
           <div class="field" style="grid-column:1 / -1"><label>وصف</label><input id="c_desc" placeholder="وصف مختصر" /></div>
         </div>
-        <div style="display:flex;gap:10px;margin-top:10px">
+        <div class="btn-group">
           <button id="addCategoryBtn" class="btn-save"><i class="fa-solid fa-plus"></i> إضافة فئة</button>
         </div>
       </div>
@@ -180,6 +197,26 @@
       </div>
     </section>
   </main>
+
+  <!-- مودال استيراد المنتجات -->
+  <div id="importModal" class="modal">
+    <div class="modal-content">
+      <span class="close">&times;</span>
+      <h2>استيراد المنتجات</h2>
+      <div class="import-instructions">
+        <p>📋 <strong>تعليمات الاستيراد:</strong></p>
+        <p>• الصيغة المتوقعة: الاسم، الفئة، السعر، المخزون (مفصولة بفاصلة)</p>
+        <p>• مثال: شتلة زيتون,أشجار مثمرة,1500,25</p>
+        <p>• يمكنك نسخ البيانات من Excel أو أي جدول بيانات</p>
+      </div>
+      <textarea class="import-area" id="importData" placeholder="الصق بيانات المنتجات هنا..."></textarea>
+      <div class="btn-group">
+        <button id="processImportBtn" class="btn-save"><i class="fa-solid fa-upload"></i> معالجة البيانات</button>
+        <button id="cancelImportBtn" class="btn btn-outline"><i class="fa-solid fa-times"></i> إلغاء</button>
+      </div>
+      <div id="importResults" style="margin-top: 16px; display: none;"></div>
+    </div>
+  </div>
 
   <script>
     // ===== إعدادات API =====
@@ -457,6 +494,103 @@
         data:{ labels:labelsT, datasets:[{ label:'تكرار البيع', data:dataT }] },
         options:{ indexAxis: labelsT.length>6 ? 'y' : 'x', plugins:{ legend:{display:true} } }
       });
+    }
+
+    // ===== استيراد المنتجات =====
+    const importModal = document.getElementById('importModal');
+    const importBtn = document.getElementById('importProductsBtn');
+    const closeBtn = document.getElementsByClassName('close')[0];
+    const cancelImportBtn = document.getElementById('cancelImportBtn');
+    const processImportBtn = document.getElementById('processImportBtn');
+    const importData = document.getElementById('importData');
+    const importResults = document.getElementById('importResults');
+
+    // فتح المودال
+    importBtn.onclick = function() {
+      importModal.style.display = 'block';
+      importData.value = '';
+      importResults.style.display = 'none';
+    }
+
+    // إغلاق المودال
+    closeBtn.onclick = function() {
+      importModal.style.display = 'none';
+    }
+
+    cancelImportBtn.onclick = function() {
+      importModal.style.display = 'none';
+    }
+
+    // معالجة البيانات المستوردة
+    processImportBtn.onclick = async function() {
+      const data = importData.value.trim();
+      if (!data) {
+        alert('يرجى إدخال بيانات للاستيراد');
+        return;
+      }
+
+      const lines = data.split('\n').filter(line => line.trim() !== '');
+      let successCount = 0;
+      let errorCount = 0;
+      let errorMessages = [];
+
+      importResults.innerHTML = '<p>جاري معالجة البيانات...</p>';
+      importResults.style.display = 'block';
+
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i].trim();
+        const parts = line.split(',').map(part => part.trim());
+        
+        if (parts.length < 4) {
+          errorCount++;
+          errorMessages.push(`السطر ${i+1}: يحتوي على عدد غير كاف من الحقول (${parts.length} بدلاً من 4)`);
+          continue;
+        }
+
+        const [name, category, price, stock] = parts;
+
+        if (!name || !category) {
+          errorCount++;
+          errorMessages.push(`السطر ${i+1}: الاسم والفئة مطلوبان`);
+          continue;
+        }
+
+        const payload = {
+          action: 'addProduct',
+          name: name,
+          category: category,
+          price: parseInt(price) || 0,
+          stock: parseInt(stock) || 0,
+          image: '',
+          desc: ''
+        };
+
+        try {
+          const msg = await apiPost(payload);
+          successCount++;
+        } catch (e) {
+          errorCount++;
+          errorMessages.push(`السطر ${i+1}: تعذر إضافة المنتج - ${e.message}`);
+        }
+      }
+
+      // عرض النتائج
+      importResults.innerHTML = `
+        <h3>نتيجة الاستيراد</h3>
+        <p>✅ تم استيراد ${successCount} منتج بنجاح</p>
+        <p>❌ فشل استيراد ${errorCount} منتج</p>
+        ${errorMessages.length > 0 ? `<details><summary>عرض التفاصيل</summary><ul>${errorMessages.map(msg => `<li>${msg}</li>`).join('')}</ul></details>` : ''}
+        <div class="btn-group">
+          <button class="btn-save" onclick="importModal.style.display='none'; init();">تم</button>
+        </div>
+      `;
+    }
+
+    // إغلاق النافذة عند النقر خارجها
+    window.onclick = function(event) {
+      if (event.target == importModal) {
+        importModal.style.display = 'none';
+      }
     }
 
     // تشغيل أولي
